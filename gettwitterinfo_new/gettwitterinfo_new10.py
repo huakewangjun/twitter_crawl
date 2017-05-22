@@ -5,8 +5,7 @@ import subprocess
 import json
 import datetime
 import time
-import threadpool
-import threading
+import multiprocessing
 import tweepy
 import HTMLParser
 from tweepy import OAuthHandler
@@ -123,7 +122,7 @@ def get_relevancy(content):
     predict=0
     if wordlist:
         for item in wordlist:
-            if re.match('cve-\d+-\d+',item):
+            if re.match('cve-\d{4}-\d{4,5}|cve\d{8,9}',item):
                 item='cve'
             cur.execute("select count from keywords_vulnerability_test where keyword=%s",(item,))
             results3=cur.fetchone()
@@ -137,7 +136,7 @@ def save_tweets(user_name,new_tweets,threadnum):
     for i in range(0,len(new_tweets)):
         if new_tweets[i].created_at<(datetime.datetime.utcnow()-datetime.timedelta(days=1)):
             return
-        if not (new_tweets[i].lang is None or new_tweets[i].lang == "en"):
+        if not (new_tweets[i].lang is None or new_tweets[i].lang == "en" or new_tweets[i].lang == "zh"):
             continue
         tweet_id=new_tweets[i].id
         created_at=new_tweets[i].created_at
@@ -238,6 +237,7 @@ def save_tweets(user_name,new_tweets,threadnum):
                 break
             except Exception as e:
                 if "list index out of range":
+                    print "list index out of range"
                     return
                 print "error in downloading twitter content from "+href+'\n'+str(e)
                 time.sleep(10)
@@ -246,6 +246,9 @@ def save_tweets(user_name,new_tweets,threadnum):
         else:
             link=None
         relevancy=get_relevancy(content)
+        CVEFlag=False
+        if re.match('cve-\d{4}-\d{4,5}|cve\d{8,9}',content):
+           CVEFlag=True
         utc_time=datetime.datetime.utcnow()
         now_time=utc_time+datetime.timedelta(hours=8)
         until_time=utc_time-datetime.timedelta(days=1)
@@ -280,9 +283,16 @@ def save_tweets(user_name,new_tweets,threadnum):
                     charset = 'utf8'
                     )
                 cur = conn.cursor()
-                cur.execute("insert into twitter_users"+\
+                if CVEFlag:
+                    cur.execute("insert into twitter_users"+\
                             "(user,count,user_id,nickname,time_zone,utc_offset,created_at,description,location,statuses_count,friends_count,followers_count,favourites_count,verified)"+\
                             " values(%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "+\
+                            "on duplicate key update count=count+1,"+\
+                            "nickname=%s,time_zone=%s,utc_offset=%s,description=%s,location=%s,statuses_count=%s,friends_count=%s,followers_count=%s,favourites_count=%s,verified=%s",param2)
+                else:
+                    cur.execute("insert into twitter_users"+\
+                            "(user,count,user_id,nickname,time_zone,utc_offset,created_at,description,location,statuses_count,friends_count,followers_count,favourites_count,verified)"+\
+                            " values(%s,0,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "+\
                             "on duplicate key update "+\
                             "nickname=%s,time_zone=%s,utc_offset=%s,description=%s,location=%s,statuses_count=%s,friends_count=%s,followers_count=%s,favourites_count=%s,verified=%s",param2)
                 conn.commit()
@@ -310,7 +320,11 @@ def save_tweets(user_name,new_tweets,threadnum):
             print "insert into twitter_info_new error when user_name="+user_name+',params='+str(param)+":\n"+str(e)
             #sys.exit(1)
 
-def get_all_tweets(user_name,api,threadnum):
+def get_all_tweets(msg):
+    user_name=msg[0]
+    api_list=get_api_list()
+    api=api_list[msg[1]]
+    threadnum=msg[2]
     while True:
         try:
             new_tweets=api.user_timeline(screen_name=user_name,count=100)
@@ -376,37 +390,42 @@ def create_threadpool(user_list,api_list,threadnum):
     start = time.time()
     request_list=[]
     for i in range(len(user_list)):
-        request_list.append(([user_list[i],api_list[i%len(api_list)],threadnum], None))
-    pool = threadpool.ThreadPool(10)
-    requests = threadpool.makeRequests(get_all_tweets, request_list)
-    for req in requests:
-        pool.putRequest(req)
-    pool.wait()
-    end = time.time()
+        request_list.append([user_list[i],api_list[i%len(api_list)],threadnum])
+    pool =multiprocessing.Pool(processes = 4) 
+    for msg in request_list:
+        pool.apply(get_all_tweets,(msg,))
+    pool.close()
+    pool.join()
+    end=time.time()
     print 'Thread-'+str(threadnum)+' '+"use time: "+str(end-start)+" s"
 if __name__ == '__main__':
-    a=sys.argv[1]
+    threadnum=sys.argv[1]
     try:
-        a=int(a)
+        threadnum=int(threadnum)
     except Exception as e:
         raise e
-    utc_time=datetime.datetime.utcnow()
-    utc_time_start=utc_time-datetime.timedelta(days=1)
-    utc_time_end=utc_time
-    time_range=[utc_time_start,utc_time_end]
-    user_list=get_users(a)
-    twitter_id_list,twitter_id_info=get_twitter_id_list(user_list)
-    api_list=get_api_list()
-    ls_thread = []
-    total=[0]
-    create_threadpool(user_list,api_list,a)
-    string='/usr/bin/python ./gettwitterinfo_new10.py '+str(a)
     while 1:
-        try:
-            loader=subprocess.Popen(string, shell=True)
-            print 'Thread-'+str(a)+' '+'restart gettwitterinfo_new10.py '+str(a)
-            break
-        except Exception as e:
-            print e
+        print 'Thread-'+str(threadnum)+' '+'start gettwitterinfo_new10.py '+str(threadnum)
+        user_list=get_users(threadnum)
+        twitter_id_list,twitter_id_info=get_twitter_id_list(user_list)
+        api_list=get_api_list()
+        total=[0]
+        start = time.time()
+        request_list=[]
+        pool =multiprocessing.Pool(10)
+        for i in range(len(user_list)):
+            pool.apply_async(get_all_tweets,([user_list[i],i%len(api_list),threadnum],))
+        pool.close()
+        pool.join()
+        end=time.time()
+        print 'Thread-'+str(threadnum)+' '+"use time: "+str(end-start)+" s"
+        #create_threadpool(user_list,api_list,threadnum) 
+        # string='/usr/bin/python ./gettwitterinfo_new10.py '+str(threadnum)
+        #try:
+        #    loader=subprocess.Popen(string, shell=True)
+        #    print 'Thread-'+str(threadnum)+' '+'restart gettwitterinfo_new10.py '+str(threadnum)
+        #    break
+        #except Exception as e:
+        #    print e
 
 
