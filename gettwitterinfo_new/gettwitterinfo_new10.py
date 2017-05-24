@@ -96,12 +96,14 @@ def get_content_from_html(href):
     for a in replace_a:
         if 'data-expanded-url' in a.attrs.keys():
             if not a['data-expanded-url'].startswith('https://twitter.com'):
-                a.replaceWith(' '+a['href'])
+                a.replaceWith(' '+a['data-expanded-url']+' ')
             else:
                 a.replaceWith(' ')
         else:
             a.replaceWith(' ')
-    return select_content.get_text(),tags
+    content=select_content.get_text().strip()
+    content=re.subn('\n',' ',content)[0]
+    return content,tags
 def get_relevancy(content):
     conn= MySQLdb.connect(
         host='172.18.100.5',
@@ -118,12 +120,16 @@ def get_relevancy(content):
     text1=re.subn('^retweeted\s*[\s\S]*:',' ',text1)[0].strip()
     #tag_list=['CD','DT','JJ','JJR','JJS','NN','NNS','NNP','NNPS','NNP-ORG','RB','RBR','RBS','WDT','WP','WP$','WRB','VB','VBZ','VBP','VBD','VBN','VBG']
     wordlist=[word for word, pos in tag(text1)]
+    for item in wordlist:
+        if item.lower()=='cve':
+            wordlist.remove(item)
+    if re.findall('cve(?:-| )*\d{4}(?:-| )*\d{4,5}',text1):
+        wordlist.append('cve')
+    wordlist = list(set(wordlist))
     predict_list=[]
     predict=0
     if wordlist:
         for item in wordlist:
-            if re.match('cve-\d{4}-\d{4,5}|cve\d{8,9}',item):
-                item='cve'
             cur.execute("select count from keywords_vulnerability_test where keyword=%s",(item,))
             results3=cur.fetchone()
             if results3:
@@ -247,7 +253,7 @@ def save_tweets(user_name,new_tweets,threadnum):
             link=None
         relevancy=get_relevancy(content)
         CVEFlag=False
-        if re.match('cve-\d{4}-\d{4,5}|cve\d{8,9}',content):
+        if re.findall('cve(?:-| )*\d{4}(?:-| )*\d{4,5}',content):
            CVEFlag=True
         utc_time=datetime.datetime.utcnow()
         now_time=utc_time+datetime.timedelta(hours=8)
