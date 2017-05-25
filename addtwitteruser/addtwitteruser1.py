@@ -20,6 +20,9 @@ proxies = {
     'http': 'http://127.0.0.1:8118',
     'https': 'http://127.0.0.1:8118',
 }
+proxy_handler=urllib2.ProxyHandler(proxies)
+opener=urllib2.build_opener(proxy_handler)
+urllib2.install_opener(opener)
 html_parser = HTMLParser.HTMLParser()
 consumer_key = "N12louSFYDo2dgb7bhHBTge7a"
 consumer_secret = "4QcEojhonsSYSekLmd879eYQkaS6ICiT25escEZYCWgi9hc3Uz"
@@ -39,8 +42,6 @@ def getxuanwu_user():
     user_list=[]
     day=datetime.datetime.today()
     url="https://xuanwulab.github.io/cn/secnews/"+day.strftime('%Y/%m/%d')+"/index.html"
-    response = urllib2.urlopen(url)
-    html = response.read()
     response = urllib2.urlopen(url)
     html = response.read()
     soup = BeautifulSoup(html,"lxml")

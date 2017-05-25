@@ -4,6 +4,7 @@ import MySQLdb
 import datetime
 import smtplib
 import re
+import ssdeep
 from pattern.en import tag
 from email.mime.text import MIMEText
 from email.header import Header
@@ -66,10 +67,10 @@ for item in tags_list:
 string=string[:-1]+"\n\n"
 
 
-cur.execute("select * from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and statistic_time>300 order by hot_rate desc",(utc_time_start,))
+cur.execute("select * from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and statistic_time>300 and relevancy>=1000 order by focus desc",(utc_time_start,))
 results = cur.fetchall()
 i=0
-result_list=[]
+result_list={}
 results_info=[]
 for row in results:
     result_info=[]
@@ -81,31 +82,19 @@ for row in results:
     retweet_count=row[11]
     favorite_count=row[12]
     focus=row[15]
-    text1=re.subn('https?://\S+',' ',content.lower())[0]
-    text1=re.subn('@\s*[0-9a-zA-Z-_]+',' ',text1)[0]
-    text1=text1.replace('...',' ').strip()
-    text1=re.subn('^retweeted\s*[\s\S]*:',' ',text1)[0].strip()
-    tag_list=['CD','DT','JJ','JJR','JJS','NN','NNS','NNP','NNPS','NNP-ORG','RB','RBR','RBS','WDT','WP','WP$','WRB','VB','VBZ','VBP','VBD','VBN','VBG']
-    wordlist=[word for word, pos in tag(text1) if pos in tag_list]
-    predict_list=[]
-    predict=0
-    if wordlist:
-        for item in wordlist:
-            if re.match('cve-\d+-\d+',item):
-                item='cve'
-            cur.execute("select count from keywords_vulnerability_test where keyword=%s",(item,))
-            results3=cur.fetchone()
-            if results3:
-                predict_list.append(results3[0])
-        #predict_list.sort()
-        #predict_list.reverse()
-        if predict_list:
-            for item in predict_list:
-                predict+=item
-    if predict<5000:
+    predict=row[20]
+    if not predict:
+        predict=0
+    hash1 = ssdeep.hash(content.encode("UTF-8",errors='ignore').replace("\n"," "))
+    DuplicateContentFlag=False
+    for deephashvalue in result_list.values():
+        if ssdeep.compare(hash1, deephashvalue)>=3:
+            DuplicateContentFlag=True         
+            break
+    if DuplicateContentFlag:
         continue
     if retweeted_status_id:
-        if retweeted_status_id in result_list:
+        if retweeted_status_id in result_list.keys():
             continue
         cur.execute("select nickname from twitter_users where user=%s",(retweeted_status_user,))
         result=cur.fetchone()
@@ -116,12 +105,12 @@ for row in results:
         i=i+1
         create_time=row[10]
         href="https://twitter.com/"+retweeted_status_user+"/status/"+str(retweeted_status_id)
-        result_list.append(retweeted_status_id)
-        s=nickname+"@"+retweeted_status_user+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)
+        result_list[retweeted_status_id]=hash1
+        s=nickname+"@"+retweeted_status_user+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
-        result_info.append(focus)
+        result_info.append(predict)
         results_info.append(result_info)
-    elif id in result_list:
+    elif id in result_list.keys():
         continue
     else:
         i=i+1
@@ -133,16 +122,16 @@ for row in results:
             nickname = ""
         create_time=row[5]
         href="https://twitter.com/"+screen_name+"/status/"+str(id)
-        result_list.append(id)
-        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)
+        result_list[id]=hash1
+        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
-        result_info.append(focus)
+        result_info.append(predict)
         results_info.append(result_info)
 
     if len(result_list)>49:
         break
-results_info=mergesort(mergesort(results_info))
-results_info.reverse()
+#results_info=mergesort(mergesort(results_info))
+#results_info.reverse()
 for i in range(len(results_info)):
     string+=str(i+1)+". "+results_info[i][0]+"\n"
 print string
@@ -152,7 +141,7 @@ mail_host="smtp.qq.com"
 mail_user="wangjun"
 mail_pass="kivvertzhmszdihg"
 sender = '2439456082@qq.com'
-receivers = ['2439456082@qq.com','183403319@qq.com','fengmuyue@iie.ac.cn','wangshiyang@iie.ac.cn','xiaoyang@iie.ac.cn','yuanzimu@iie.ac.cn','huowei@iie.ac.cn','wuwei@iie.ac.cn','wwei@iie.ac.cn']
+receivers = ['2439456082@qq.com','183403319@qq.com','fengmuyue@iie.ac.cn','wangshiyang@iie.ac.cn','xiaoyang@iie.ac.cn','yuanzimu@iie.ac.cn','huowei@iie.ac.cn','wuwei@iie.ac.cn','wwei@iie.ac.cn','Lijing_Li@bupt.edu.cn']
 message = MIMEText(string, 'plain', 'utf-8')
 message['From'] =mail_user+"<"+sender+">"
 message['To']=";".join(receivers)
@@ -166,32 +155,3 @@ try:
 except smtplib.SMTPException,e:
     print "Error: send receivers fail"
     print e
-if True:
-    cur.execute("select * from twitter_info_new where unix_timestamp(time) <unix_timestamp(%s)",(utc_time_delete_until,))
-    results = cur.fetchall()
-    for row in results:
-        cur.execute("select timestamp_varas from twitter_info where id=%s",(row[0],))
-        result = cur.fetchone()
-        if result:
-            twitter_info_timestamp_varas=result[0]
-            if twitter_info_timestamp_varas>=row[18]:
-                try:
-                    cur.execute("delete from twitter_info_new where id=%s",(row[0],))
-                    conn.commit()
-                    print "delete success",row[0],row[1]
-                except Exception as e:
-                    print "error in delete, id="+str(row[0])+"\n",e
-                continue
-        try:
-            params=(row[0],row[1],row[2],row[3],row[4],row[5],row[6],row[7],row[8],row[9],row[11],row[12],row[2],row[3],row[4],row[11],row[12])
-            cur.execute("insert into twitter_info(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweet_count,favorite_count) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on duplicate key update content=%s,link=%s,tags=%s,retweet_count=%s,favorite_count=%s ",params)
-            conn.commit()
-            print "transfer success",row[0],row[1]
-            try:
-                cur.execute("delete from twitter_info_new where id=%s",(row[0],))
-                conn.commit()
-                print "delete success",row[0],row[1]
-            except Exception as e:
-                print "error in delete, id="+str(row[0])+"\n",e
-        except Exception as e:
-            print "error in transfer where id="+str(row[0])+"\n",e

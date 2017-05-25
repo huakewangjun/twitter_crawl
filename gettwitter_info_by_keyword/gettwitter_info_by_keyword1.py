@@ -5,6 +5,7 @@ import HTMLParser
 from tweepy import OAuthHandler
 import MySQLdb
 import re
+import json
 import urllib2
 from bs4 import BeautifulSoup
 import sys
@@ -26,17 +27,8 @@ conn= MySQLdb.connect(
     db ='twitter',
     charset = 'utf8'
     )
-html_parser = HTMLParser.HTMLParser()
-#在https://apps.twitter.com/app/new注册app应用，获取以下四个认证参数
-consumer_key = "N12louSFYDo2dgb7bhHBTge7a"
-consumer_secret = "4QcEojhonsSYSekLmd879eYQkaS6ICiT25escEZYCWgi9hc3Uz"
-access_key = "839320943520428033-UqbP3kyiOicYiQPqTxo2mNW5e6s6fit"
-access_secret = "hBp6FJnP2gjF8YXtLjuzSWehig2W9oXWaLCPAOOEJ7E8t"
-auth = OAuthHandler(consumer_key, consumer_secret)
-auth.set_access_token(access_key,access_secret)
-api=tweepy.API(auth)
-api.proxy=proxies
 total=[0]
+html_parser = HTMLParser.HTMLParser()
 def filter_emoji(desstr,restr=''):
     try:  
         co = re.compile(u'[\U00010000-\U0010ffff]')  
@@ -60,44 +52,41 @@ def get_content_from_html(href):
     for a in replace_a:
         if 'data-expanded-url' in a.attrs.keys():
             if not a['data-expanded-url'].startswith('https://twitter.com'):
-                a.replaceWith(' '+a['href'])
+                a.replaceWith(' '+a['data-expanded-url']+' ')
             else:
                 a.replaceWith(' ')
         else:
             a.replaceWith(' ')
-    return select_content.get_text(),tags
+    content=select_content.get_text().strip()
+    content=re.subn('\n',' ',content)[0]
+    return content,tags
 def save_tweets(keyword,new_tweets):
     for i in range(0,len(new_tweets)):
-        if not (new_tweets[i].lang is None or new_tweets[i].lang == "en"):
+        if not (new_tweets[i].lang is None or new_tweets[i].lang == "en" or new_tweets[i].lang == "zh"):
             continue
         tweet_id=new_tweets[i].id
+        try:
+            cur = conn.cursor()
+            cur.execute("select * from twitter_info_keyword where id=%s",(tweet_id,))
+            result=cur.fetchone()
+            cur.close()
+        except Exception as e:
+            print "select twitter_info_keyword error when id="+str(tweet_id)+":\n",e
+        if result:
+            continue
         user_name=new_tweets[i].user.screen_name
         href='https://twitter.com/'+user_name+'/status/'+str(tweet_id)
-        # content=html_parser.unescape(filter_emoji(new_tweets[i].text)).encode("UTF-8", errors='ignore')
-        created_at=new_tweets[i].created_at.strftime("%Y-%m-%d %H:%M:%S")
+        created_at=new_tweets[i].created_at
         favorite_count=new_tweets[i].favorite_count
         retweet_count=new_tweets[i].retweet_count
         in_reply_to_status_id=new_tweets[i].in_reply_to_status_id
-        # if new_tweets[i]._json['entities']['hashtags']:
-        #     tags_list=[]
-        #     for item in new_tweets[i]._json['entities']['hashtags']:
-        #         tags_list.append(item['text'].encode("UTF-8", errors='ignore'))
-        #     tags=str(tags_list)
-        # else:
-        #     tags=None
+
         if hasattr(new_tweets[i],"retweeted_status"):
             retweeted_status_id=new_tweets[i].retweeted_status.id
-            # content=html_parser.unescape(filter_emoji(new_tweets[i].retweeted_status.text)).encode("UTF-8", errors='ignore')
             retweeted_status_user=new_tweets[i].retweeted_status.user.screen_name.encode("UTF-8", errors='ignore')
-            retweeted_status_created_at=new_tweets[i].retweeted_status.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            retweeted_status_created_at=new_tweets[i].retweeted_status.created_at
             retweeted_reply_to_status_id=new_tweets[i].retweeted_status.in_reply_to_status_id
-            # if new_tweets[i].retweeted_status._json['entities']['hashtags']:
-            #     tags_list=[]
-            #     for item in new_tweets[i].retweeted_status._json['entities']['hashtags']:
-            #         tags_list.append(item['text'].encode("UTF-8", errors='ignore'))
-            #     tags=str(tags_list)
-            # else:
-            #     tags=None
+
             favorite_count=new_tweets[i].retweeted_status.favorite_count
             retweet_count=new_tweets[i].retweeted_status.retweet_count
 
@@ -121,17 +110,14 @@ def save_tweets(keyword,new_tweets):
             retweeted_status_user_verified=new_tweets[i].retweeted_status.user.verified
         else:
             retweeted_status_id=None
+            retweeted_status_created_at=None
             retweeted_status_user=None
             retweeted_reply_to_status_id=None
         if hasattr(new_tweets[i],"quoted_status_id"):
             quoted_status_id=new_tweets[i].quoted_status_id
-            # s=re.findall("https?://t.co/\w+$",content)
-            # if s:
-            #     content=content[:-len(s[0])].strip()
         else:
             quoted_status_id=None
-        #content=filter_emoji(new_tweets[i].text).encode("UTF-8", errors='ignore')
-        if True:#(u'\u2026' in content) or (in_reply_to_status_id is not None) or (retweeted_reply_to_status_id is not None):
+        if True:
             while True:
                 try:
                     content,tags=get_content_from_html(href)
@@ -144,8 +130,11 @@ def save_tweets(keyword,new_tweets):
             link=str(re.findall('https?://\S+\.\S+\w',content))
         else:
             link=None
+        CVEFlag=False
+        if re.findall('cve(?:-| )*\d{4}(?:-| )*\d{4,5}',content):
+           CVEFlag=True
         focus=retweet_count+favorite_count
-        param=(tweet_id,user_name,content,link,tags,created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweet_count,favorite_count,focus,keyword)
+        param=(tweet_id,user_name,content,link,tags,created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
         #将转发的twitter的用户加入用户数据库表
         if retweeted_status_user:
             try:
@@ -156,9 +145,16 @@ def save_tweets(keyword,new_tweets):
                         retweeted_status_user_description,retweeted_status_user_location,retweeted_status_user_statuses_count,\
                         retweeted_status_user_friends_count,retweeted_status_user_followers_count,retweeted_status_user_favourites_count,retweeted_status_user_verified)
                 cur = conn.cursor()
-                cur.execute("insert into twitter_users"+\
+                if CVEFlag:
+                    cur.execute("insert into twitter_users"+\
                             "(user,count,user_id,nickname,time_zone,utc_offset,created_at,description,location,statuses_count,friends_count,followers_count,favourites_count,verified)"+\
                             " values(%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "+\
+                            "on duplicate key update count=count+1,"+\
+                            "nickname=%s,time_zone=%s,utc_offset=%s,description=%s,location=%s,statuses_count=%s,friends_count=%s,followers_count=%s,favourites_count=%s,verified=%s",param2)
+                else:
+                    cur.execute("insert into twitter_users"+\
+                            "(user,count,user_id,nickname,time_zone,utc_offset,created_at,description,location,statuses_count,friends_count,followers_count,favourites_count,verified)"+\
+                            " values(%s,0,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "+\
                             "on duplicate key update "+\
                             "nickname=%s,time_zone=%s,utc_offset=%s,description=%s,location=%s,statuses_count=%s,friends_count=%s,followers_count=%s,favourites_count=%s,verified=%s",param2)
                 conn.commit()
@@ -170,9 +166,9 @@ def save_tweets(keyword,new_tweets):
         try:
             cur = conn.cursor()
             cur.execute("insert ignore into twitter_info_keyword"+\
-                        "(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,"+\
+                        "(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,"+\
                         "retweet_count,favorite_count,focus,keyword) "+\
-                        "values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",param)
+                        "values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",param)
             conn.commit()
             cur.close()
         except Exception as e:
@@ -180,65 +176,48 @@ def save_tweets(keyword,new_tweets):
             #sys.exit(1)
         total[0]=total[0]+1
         print total[0],tweet_id,user_name
-def get_tweets_by_keyword(keyword):
-    cur = conn.cursor()
-    cur.execute("select max(id),min(id) from twitter_info_keyword where keyword=%s",(keyword,))
-    results = cur.fetchone()
-    cur.close()
-    if not results[0]:
+def get_tweets_by_keyword(keyword,api_list):
+    while True:
+        try:
+            api=api_list[api_num[0]]
+            new_tweets=api.search(q=keyword,count=100,result_type='recent')
+            api_num[0]=(api_num[0]+1)%len(api_list)
+            break
+        except tweepy.TweepError, e:
+            print 'TweepError when get api.search(q='+keyword+',count=100):\n',e
+            time.sleep(10)
+    while (len(new_tweets) > 0):
+        save_tweets(keyword,new_tweets)
+        oldest = new_tweets[-1].id - 1
         while True:
             try:
-                new_tweets=api.search(q=keyword,count=100,result_type='recent')
+                api=api_list[api_num[0]]
+                new_tweets = api.search(q=keyword,count=100, max_id=oldest,result_type='recent')
+                api_num[0]=(api_num[0]+1)%len(api_list)
                 break
             except tweepy.TweepError, e:
-                print 'TweepError when get search(q='+keyword+',count=100):\n',e
+                print 'TweepError when get api.search(q='+keyword+',count=100,max_id='+str(oldest)+'):\n',e
                 time.sleep(10)
-        while (len(new_tweets) > 0):
-            save_tweets(keyword,new_tweets)
-            oldest = new_tweets[-1].id - 1
-            while True:
-                try:
-                    new_tweets = api.search(q=keyword,count=100, max_id=oldest,result_type='recent')
-                    break
-                except tweepy.TweepError, e:
-                    print 'TweepError when get search(q='+keyword+',count=100,max_id='+str(oldest)+'):\n',e
-                    time.sleep(10)
-    else:
-        newest=results[0]
-        oldest=results[1]-1
-        cur = conn.cursor()
-        cur.execute("select count(*) from twitter_info_keyword where keyword=%s",(keyword,))
-        results = cur.fetchone()
-        cur.close()
-        total[0]=results[0]
-        while True:
-            while True:
-                try:
-                    new_tweets = api.search(q=keyword,count=100, since_id=newest,result_type='recent')
-                    break
-                except tweepy.TweepError, e:
-                    print 'TweepError when get search(q='+keyword+',count=100,since_id='+str(newest)+'):\n',e
-                    time.sleep(10)
-            if new_tweets:
-                save_tweets(keyword,new_tweets)
-                newest=new_tweets[0].id
-            else:
-                break
-        while True:
-            while True:
-                try:
-                    new_tweets = api.search(q=keyword,count=100, max_id=oldest,result_type='recent')
-                    break
-                except tweepy.TweepError, e:
-                    print 'TweepError when get search(q='+keyword+',count=100,max_id='+str(oldest)+'):\n',e
-                    time.sleep(10)
-            if new_tweets:
-                save_tweets(keyword,new_tweets)
-                oldest=new_tweets[-1].id - 1
-            else:
-                break
+def get_api_list():
+    with open('ReservedAccount.json') as json_file:
+        data = json.load(json_file)
+    api_list=[]
+    for item in data:
+        #在https://apps.twitter.com/app/new注册app应用，获取以下四个认证参数
+        consumer_key = item['consumer_key']
+        consumer_secret = item['consumer_secret']
+        access_key = item['access_key']
+        access_secret = item['access_secret']
+        auth = OAuthHandler(consumer_key, consumer_secret)
+        auth.set_access_token(access_key,access_secret)
+        api=tweepy.API(auth)
+        api.proxy=proxies
+        api_list.append(api)
+    return api_list
 if __name__ == '__main__':
+    api_num=[0]
     while True:
         keyword="#ShadowBrokers"
-        get_tweets_by_keyword(keyword)
+        api_list=get_api_list()
+        get_tweets_by_keyword(keyword,api_list)
         time.sleep(60)
