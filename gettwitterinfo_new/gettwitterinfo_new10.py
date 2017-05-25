@@ -138,7 +138,7 @@ def get_relevancy(content):
             for item in predict_list:
                 predict+=item
     return predict
-def save_tweets(user_name,new_tweets,threadnum):
+def save_tweets(user_name,new_tweets,threadnum,total):
     for i in range(0,len(new_tweets)):
         if new_tweets[i].created_at<(datetime.datetime.utcnow()-datetime.timedelta(days=1)):
             return
@@ -331,6 +331,7 @@ def get_all_tweets(msg):
     api_list=get_api_list()
     api=api_list[msg[1]]
     threadnum=msg[2]
+    total=[0]
     while True:
         try:
             new_tweets=api.user_timeline(screen_name=user_name,count=100)
@@ -355,7 +356,7 @@ def get_all_tweets(msg):
     while (len(new_tweets) > 0):
         if new_tweets[0].created_at<(datetime.datetime.utcnow()-datetime.timedelta(days=1)):
             return
-        save_tweets(user_name,new_tweets,threadnum)
+        save_tweets(user_name,new_tweets,threadnum,total)
         oldest = new_tweets[-1].id - 1
         if new_tweets[-1].created_at<=(datetime.datetime.utcnow()-datetime.timedelta(days=1)):
             return
@@ -392,18 +393,6 @@ def get_api_list():
         api.proxy=proxies
         api_list.append(api)
     return api_list
-def create_threadpool(user_list,api_list,threadnum):
-    start = time.time()
-    request_list=[]
-    for i in range(len(user_list)):
-        request_list.append([user_list[i],api_list[i%len(api_list)],threadnum])
-    pool =multiprocessing.Pool(processes = 4) 
-    for msg in request_list:
-        pool.apply(get_all_tweets,(msg,))
-    pool.close()
-    pool.join()
-    end=time.time()
-    print 'Thread-'+str(threadnum)+' '+"use time: "+str(end-start)+" s"
 if __name__ == '__main__':
     threadnum=sys.argv[1]
     try:
@@ -415,7 +404,6 @@ if __name__ == '__main__':
         user_list=get_users(threadnum)
         twitter_id_list,twitter_id_info=get_twitter_id_list(user_list)
         api_list=get_api_list()
-        total=[0]
         start = time.time()
         request_list=[]
         pool =multiprocessing.Pool(10)
@@ -425,13 +413,5 @@ if __name__ == '__main__':
         pool.join()
         end=time.time()
         print 'Thread-'+str(threadnum)+' '+"use time: "+str(end-start)+" s"
-        #create_threadpool(user_list,api_list,threadnum) 
-        # string='/usr/bin/python ./gettwitterinfo_new10.py '+str(threadnum)
-        #try:
-        #    loader=subprocess.Popen(string, shell=True)
-        #    print 'Thread-'+str(threadnum)+' '+'restart gettwitterinfo_new10.py '+str(threadnum)
-        #    break
-        #except Exception as e:
-        #    print e
 
 
