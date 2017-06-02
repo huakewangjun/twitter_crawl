@@ -5,18 +5,16 @@ import HTMLParser
 from tweepy import OAuthHandler
 import MySQLdb
 import re
-import urllib2
-import lxml
-from bs4 import BeautifulSoup
 import json
-from save_poc_file_info import *
+import urllib2
+from bs4 import BeautifulSoup
 import sys
 reload(sys)
 sys.setdefaultencoding('utf-8')
 #目前使用的代理端口为8888，可以根据需要进行修改
 proxies = {
-    'http': 'http://127.0.0.1:1080',
-    'https': 'http://127.0.0.1:1080',
+    'http': 'http://127.0.0.1:8118',
+    'https': 'http://127.0.0.1:8118',
 }
 proxy_handler=urllib2.ProxyHandler(proxies)
 opener=urllib2.build_opener(proxy_handler)
@@ -29,16 +27,8 @@ conn= MySQLdb.connect(
     db ='twitter',
     charset = 'utf8'
     )
-# conn= MySQLdb.connect(
-#     host='10.10.20.153',
-#     port = 3306,
-#     user='root',
-#     passwd='mima1234',
-#     db ='twitter',
-#     charset = 'utf8'
-#     )
-html_parser = HTMLParser.HTMLParser()
 total=[0]
+html_parser = HTMLParser.HTMLParser()
 def filter_emoji(desstr,restr=''):
     try:  
         co = re.compile(u'[\U00010000-\U0010ffff]')  
@@ -53,52 +43,59 @@ def get_content_from_html(href):
     select_content=soup.select(".permalink-tweet .js-tweet-text-container p")[0]
     tags_b=select_content.select(".twitter-hashtag b")
     tags=None
-    link=[]
     if tags_b:
         tags_list=[]
         for b in tags_b:
             tags_list.append(b.get_text().encode("UTF-8", errors='ignore'))
-            tags=tags_list
+            tags=str(tags_list)
     replace_a=select_content.find_all("a",href=re.compile("https?://t.co/\w+"))
     for a in replace_a:
         if 'data-expanded-url' in a.attrs.keys():
             if not a['data-expanded-url'].startswith('https://twitter.com'):
                 a.replaceWith(' '+a['data-expanded-url']+' ')
-                link.append(a['data-expanded-url'])
             else:
                 a.replaceWith(' ')
         else:
             a.replaceWith(' ')
-    if not link:
-        link=None
     content=select_content.get_text().strip()
     content=re.subn('\n',' ',content)[0]
-    return content,tags,link
+    return content,tags
 def save_tweets(keyword,new_tweets):
     for i in range(0,len(new_tweets)):
-        # if not (new_tweets[i].lang is None or new_tweets[i].lang == "en" or new_tweets[i].lang == "zh"):
-        #     continue
+        if not (new_tweets[i].lang is None or new_tweets[i].lang == "en" or new_tweets[i].lang == "zh"):
+            continue
         tweet_id=new_tweets[i].id
         try:
+            conn= MySQLdb.connect(
+                host='172.18.100.5',
+                port = 3306,
+                user='jobadmin',
+                passwd='jobadmin',
+                db ='twitter',
+                charset = 'utf8'
+                )
             cur = conn.cursor()
-            cur.execute("select * from twitter_info_keyword_poc where id=%s",(tweet_id,))
+            cur.execute("select * from twitter_info_keyword where id=%s",(tweet_id,))
             result=cur.fetchone()
             cur.close()
+            if result:
+                continue
         except Exception as e:
-            print "select twitter_info_keyword_poc error when id="+str(tweet_id)+":\n",e
-        if result:
-            continue
+            print "select twitter_info_keyword error when id="+str(tweet_id)+":\n",e
+            return
         user_name=new_tweets[i].user.screen_name
         href='https://twitter.com/'+user_name+'/status/'+str(tweet_id)
         created_at=new_tweets[i].created_at
         favorite_count=new_tweets[i].favorite_count
         retweet_count=new_tweets[i].retweet_count
         in_reply_to_status_id=new_tweets[i].in_reply_to_status_id
+
         if hasattr(new_tweets[i],"retweeted_status"):
             retweeted_status_id=new_tweets[i].retweeted_status.id
             retweeted_status_user=new_tweets[i].retweeted_status.user.screen_name.encode("UTF-8", errors='ignore')
             retweeted_status_created_at=new_tweets[i].retweeted_status.created_at
             retweeted_reply_to_status_id=new_tweets[i].retweeted_status.in_reply_to_status_id
+
             favorite_count=new_tweets[i].retweeted_status.favorite_count
             retweet_count=new_tweets[i].retweeted_status.retweet_count
 
@@ -122,33 +119,35 @@ def save_tweets(keyword,new_tweets):
             retweeted_status_user_verified=new_tweets[i].retweeted_status.user.verified
         else:
             retweeted_status_id=None
-            retweeted_status_user=None
             retweeted_status_created_at=None
+            retweeted_status_user=None
             retweeted_reply_to_status_id=None
         if hasattr(new_tweets[i],"quoted_status_id"):
             quoted_status_id=new_tweets[i].quoted_status_id
         else:
             quoted_status_id=None
         if True:
-            while True:
+            i=0
+            while i<10:
                 try:
-                    content,tags,link=get_content_from_html(href)
+                    content,tags=get_content_from_html(href)
                     content=html_parser.unescape(filter_emoji(content)).encode("UTF-8", errors='ignore')
                     break
                 except Exception as e:
                     print "error in downloading twitter content from "+href,e
                     time.sleep(10)
+                    i=i+1
+            if i>=10:
+                continue
+        if re.findall('https?://\S+\.\S+\w',content):
+            link=str(re.findall('https?://\S+\.\S+\w',content))
+        else:
+            link=None
         CVEFlag=False
         if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content.lower()):
            CVEFlag=True
         focus=retweet_count+favorite_count
-        param=(tweet_id,user_name,content,str(link),str(tags),created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
-        if CVEFlag and link:
-            print 'save poc file info'
-            if retweeted_status_id:
-                save_poc_file_info(retweeted_status_id,content,link)
-            else:
-                save_poc_file_info(tweet_id,content,link)
+        param=(tweet_id,user_name,content,link,tags,created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
         #将转发的twitter的用户加入用户数据库表
         if retweeted_status_user:
             try:
@@ -179,9 +178,9 @@ def save_tweets(keyword,new_tweets):
                 #sys.exit(1)
         try:
             cur = conn.cursor()
-            cur.execute("insert ignore into twitter_info_keyword_poc"+\
-                        "(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,"+\
-                        "retweeted_status_created_at,retweet_count,favorite_count,focus,keyword) "+\
+            cur.execute("insert ignore into twitter_info_keyword"+\
+                        "(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,"+\
+                        "retweet_count,favorite_count,focus,keyword) "+\
                         "values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",param)
             conn.commit()
             cur.close()
@@ -231,7 +230,7 @@ def get_api_list():
 if __name__ == '__main__':
     api_num=[0]
     while True:
-        keyword="poc cve"
+        keyword="#ShadowBrokers"
         api_list=get_api_list()
         get_tweets_by_keyword(keyword,api_list)
         time.sleep(60)

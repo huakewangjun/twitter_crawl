@@ -41,7 +41,7 @@ def get_users():
         charset = 'utf8'
         )
     cur = conn.cursor()
-    cur.execute("select user from twitter_users order by count desc,user asc")
+    cur.execute("select user from twitter_users order by count desc,timestamp_varas asc")
     results = cur.fetchall()
     user_list=[]
     for row in results:

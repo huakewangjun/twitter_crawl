@@ -49,7 +49,7 @@ utc_time_end=utc_time
 subject="security twitters of "+utc_time.strftime("%Y-%m-%d")+"(use stucco corpus)"
 string =subject+"\n\n"
 cur = conn.cursor()
-cur.execute("select tags from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and tags is not null order by focus desc",(utc_time_start,))
+cur.execute("select tags from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and tags is not null and relevancy>=1000 order by focus desc",(utc_time_start,))
 results = cur.fetchall()
 tags_list=[]
 for row in results:
@@ -67,7 +67,7 @@ for item in tags_list:
 string=string[:-1]+"\n\n"
 
 
-cur.execute("select * from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and statistic_time>300 and relevancy>=1000 order by focus desc",(utc_time_start,))
+cur.execute("select * from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and relevancy>=1000 order by focus desc",(utc_time_start,))
 results = cur.fetchall()
 i=0
 result_list={}

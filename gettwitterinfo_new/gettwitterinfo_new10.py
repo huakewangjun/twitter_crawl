@@ -105,6 +105,12 @@ def get_content_from_html(href):
     content=re.subn('\n',' ',content)[0]
     return content,tags
 def get_relevancy(content):
+    links=re.findall('https?://\S+',' ',content.lower())
+    GithubLinkFlag=False
+    for item in links:
+        if 'github' in item:
+            GithubLinkFlag=True
+            break
     conn= MySQLdb.connect(
         host='172.18.100.5',
         port = 3306,
@@ -123,11 +129,13 @@ def get_relevancy(content):
     for item in wordlist:
         if item.lower()=='cve':
             wordlist.remove(item)
-    if re.findall('cve(?:-| )*\d{4}(?:-| )*\d{4,5}',text1):
+    if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',text1):
         wordlist.append('cve')
     wordlist = list(set(wordlist))
     predict_list=[]
     predict=0
+    if GithubLinkFlag:
+        predict=1000
     if wordlist:
         for item in wordlist:
             cur.execute("select count from keywords_vulnerability_test where keyword=%s",(item,))
@@ -187,7 +195,7 @@ def save_tweets(user_name,new_tweets,threadnum,total):
                 cur.execute("update twitter_info_new set retweet_count=%s,favorite_count=%s,focus=%s,statistic_time=%s,hot_rate=%s,timestamp_varas=%s where id = %s",(retweet_count,favorite_count,focus,statistic_time,hot_rate,timestamp_varas,tweet_id))
                 conn.commit()
                 cur.close()
-                total[0]=total[0]+1
+                #total[0]=total[0]+1
                 print 'Thread-'+str(threadnum)+' '+str(total[0])+' '+str(tweet_id)+' '+str(user_name)+' '+"update"
             except Exception as e:
                 print "update in twitter_info_new error when user_name="+user_name+',params='+str((retweet_count,favorite_count,focus,statistic_time,hot_rate,timestamp_varas,tweet_id))+":\n"+str(e)
@@ -253,7 +261,7 @@ def save_tweets(user_name,new_tweets,threadnum,total):
             link=None
         relevancy=get_relevancy(content)
         CVEFlag=False
-        if re.findall('cve(?:-| )*\d{4}(?:-| )*\d{4,5}',content):
+        if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content.lower()):
            CVEFlag=True
         utc_time=datetime.datetime.utcnow()
         now_time=utc_time+datetime.timedelta(hours=8)
@@ -320,7 +328,7 @@ def save_tweets(user_name,new_tweets,threadnum,total):
             cur.execute("insert ignore into twitter_info_new(id,screen_name,content,link,tags,time,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,insert_retweet_count,insert_favorite_count,focus,statistic_time,hot_rate,timestamp_varas,timestamp_insert,relevancy) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",param)
             conn.commit()
             cur.close()
-            total[0]=total[0]+1
+            #total[0]=total[0]+1
             print 'Thread-'+str(threadnum)+' '+str(total[0])+' '+str(tweet_id)+' '+str(user_name)+" insert"
         except Exception as e:
             print "insert into twitter_info_new error when user_name="+user_name+',params='+str(param)+":\n"+str(e)
@@ -331,7 +339,7 @@ def get_all_tweets(msg):
     api_list=get_api_list()
     api=api_list[msg[1]]
     threadnum=msg[2]
-    total=[0]
+    total=[msg[3]]
     while True:
         try:
             new_tweets=api.user_timeline(screen_name=user_name,count=100)
@@ -405,10 +413,11 @@ if __name__ == '__main__':
         twitter_id_list,twitter_id_info=get_twitter_id_list(user_list)
         api_list=get_api_list()
         start = time.time()
-        request_list=[]
+        total=[0]
         pool =multiprocessing.Pool(10)
         for i in range(len(user_list)):
-            pool.apply_async(get_all_tweets,([user_list[i],i%len(api_list),threadnum],))
+            total[0]=total[0]+1
+            pool.apply_async(get_all_tweets,([user_list[i],i%len(api_list),threadnum,total[0]],))
         pool.close()
         pool.join()
         end=time.time()
