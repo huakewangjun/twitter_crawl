@@ -59,6 +59,17 @@ for row in results:
         item=item.strip()[1:-1]
         tags_list.append(item.lower())
 counter=collections.Counter(tags_list)
+for k in counter:
+    word=k
+    count=counter[k]
+    cur.execute("select * from keywords_vulnerability_test where keyword=%s",(word,))
+    result = cur.fetchone()
+    if result:
+        cur.execute("update keywords_vulnerability_test set count=count+%s where keyword=%s",(count,word))
+    else:
+        cur.execute("insert into keywords_vulnerability_test(keyword,type,count) values(%s,%s,%s)",(word,'twitter_tag',100))
+    conn.commit()
+
 tags_list=[k[0] for k in counter.most_common(10)]
 
 string+="today's top 10 tags:\n"

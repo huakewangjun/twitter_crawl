@@ -322,10 +322,20 @@ def get_youtube_info(response_url_MD5,response_url,html):
         if not upload_status:
             print 'result:upload youtube vedio to swift fail'
     return upload_status,poc_file_name,swift_poc_file_name
+def get_exploitbox_info(response_url_MD5,response_url,html):
+    soup = BeautifulSoup(html,'lxml')
+    poc_file_name=soup.title.string.strip()
+    poc_file_name=re.subn('\s+',' ',poc_file_name)[0]
+    poc_file_name=re.subn('/|\\\\|:|\*|"|\<|\>|\||\?','-',poc_file_name)[0]+'.html'
+    content=soup.pre.get_text().strip()
+    html=content
+    swift_poc_file_name=response_url_MD5+'-'+poc_file_name
+    upload_status=save_poc_file(html,swift_poc_file_name)
+    return upload_status,poc_file_name,swift_poc_file_name
 def save_poc_file_info(id,content,link):
     #获取content里的cve编号
     content1=re.subn('https?://\S+',' ',content.lower())[0]
-    cve_list=re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content1)
+    cve_list=re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content1)
     for i in range(len(cve_list)):
         item=cve_list[i]
         number="".join(re.findall('\d',item))
@@ -372,8 +382,11 @@ def save_poc_file_info(id,content,link):
             swift_poc_file_name=None
             upload_status=0
         else:
-            if r.encoding.lower()!='utf-8':
-                html=r.content.decode(r.encoding,"ignore").encode('utf-8',"ignore")
+            if r.encoding:
+                if r.encoding.lower()!='utf-8':
+                    html=r.content.decode(r.encoding,"ignore").encode('utf-8',"ignore")
+                else:
+                    html=r.content
             else:
                 html=r.content
             response_url_MD5=get_md5(response_url)
@@ -385,7 +398,11 @@ def save_poc_file_info(id,content,link):
             elif domain=='www.youtube.com':
                 response_url=re.split('\#|&',response_url)[0]
                 response_url_MD5=get_md5(response_url)
-                upload_status,poc_file_name,swift_poc_file_name=get_youtube_info(response_url_MD5,response_url,html)           
+                upload_status,poc_file_name,swift_poc_file_name=get_youtube_info(response_url_MD5,response_url,html)
+            elif domain=='pbs.twimg.com':
+                continue
+            elif domain=='exploitbox.io':
+                upload_status,poc_file_name,swift_poc_file_name=get_exploitbox_info(response_url_MD5,response_url,html)
             else:
                 soup = BeautifulSoup(html,'lxml')
                 poc_file_name=soup.title.string.strip()

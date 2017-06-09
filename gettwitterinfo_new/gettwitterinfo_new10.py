@@ -14,6 +14,8 @@ import re
 import urllib2
 from bs4 import BeautifulSoup
 from pattern.en import tag
+import socket
+socket.setdefaulttimeout(120)
 import sys
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -36,7 +38,7 @@ def get_users(a):
         charset = 'utf8'
         )
     cur = conn.cursor()
-    cur.execute("select user from twitter_users order by count desc,user asc limit "+str(a*1000)+",1000")
+    cur.execute("select user from twitter_users order by count desc limit "+str(a*1000)+",1000")
     results = cur.fetchall()
     user_list=[]
     for row in results:
@@ -105,12 +107,6 @@ def get_content_from_html(href):
     content=re.subn('\n',' ',content)[0]
     return content,tags
 def get_relevancy(content):
-    links=re.findall('https?://\S+',' ',content.lower())
-    GithubLinkFlag=False
-    for item in links:
-        if 'github' in item:
-            GithubLinkFlag=True
-            break
     conn= MySQLdb.connect(
         host='172.18.100.5',
         port = 3306,
@@ -129,13 +125,11 @@ def get_relevancy(content):
     for item in wordlist:
         if item.lower()=='cve':
             wordlist.remove(item)
-    if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',text1):
+    if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',text1):
         wordlist.append('cve')
     wordlist = list(set(wordlist))
     predict_list=[]
     predict=0
-    if GithubLinkFlag:
-        predict=1000
     if wordlist:
         for item in wordlist:
             cur.execute("select count from keywords_vulnerability_test where keyword=%s",(item,))
@@ -244,24 +238,30 @@ def save_tweets(user_name,new_tweets,threadnum,total):
             quoted_status_id=new_tweets[i].quoted_status_id
         else:
             quoted_status_id=None
+        downloadstatus=False
         while True:
             try:
                 content,tags=get_content_from_html(href)
                 content=html_parser.unescape(filter_emoji(content)).encode("UTF-8", errors='ignore')
+                downloadstatus=True
                 break
             except Exception as e:
+                if "HTTP Error 404: Not Found" in str(e):
+                    break
                 if "list index out of range":
                     print "list index out of range"
-                    return
+                    print tweet_id,user_name
                 print "error in downloading twitter content from "+href+'\n'+str(e)
                 time.sleep(10)
+        if not downloadstatus:
+            continue
         if re.findall('https?://\S+\.\S+\w',content):
             link=str(re.findall('https?://\S+\.\S+\w',content))
         else:
             link=None
         relevancy=get_relevancy(content)
         CVEFlag=False
-        if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content.lower()):
+        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content.lower()):
            CVEFlag=True
         utc_time=datetime.datetime.utcnow()
         now_time=utc_time+datetime.timedelta(hours=8)
@@ -418,6 +418,7 @@ if __name__ == '__main__':
         for i in range(len(user_list)):
             total[0]=total[0]+1
             pool.apply_async(get_all_tweets,([user_list[i],i%len(api_list),threadnum,total[0]],))
+            #get_all_tweets([user_list[i],i%len(api_list),threadnum,total[0]])
         pool.close()
         pool.join()
         end=time.time()

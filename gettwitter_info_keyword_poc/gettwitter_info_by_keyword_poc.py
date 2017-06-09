@@ -139,7 +139,7 @@ def save_tweets(keyword,new_tweets):
                     print "error in downloading twitter content from "+href,e
                     time.sleep(10)
         CVEFlag=False
-        if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content.lower()):
+        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content.lower()):
            CVEFlag=True
         focus=retweet_count+favorite_count
         param=(tweet_id,user_name,content,str(link),str(tags),created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
@@ -234,4 +234,5 @@ if __name__ == '__main__':
         keyword="poc cve"
         api_list=get_api_list()
         get_tweets_by_keyword(keyword,api_list)
-        time.sleep(60)
+        print 'search end ,sleep 900s',datetime.datetime.now()
+        time.sleep(900)
