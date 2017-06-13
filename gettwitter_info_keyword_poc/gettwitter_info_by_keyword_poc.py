@@ -141,14 +141,19 @@ def save_tweets(keyword,new_tweets):
         CVEFlag=False
         if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content.lower()):
            CVEFlag=True
+
         focus=retweet_count+favorite_count
-        param=(tweet_id,user_name,content,str(link),str(tags),created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
         if CVEFlag and link:
             print 'save poc file info'
             if retweeted_status_id:
                 save_poc_file_info(retweeted_status_id,content,link)
             else:
                 save_poc_file_info(tweet_id,content,link)
+        if link:
+            link=str(link)
+        if tags:
+            tags=str(tags)
+        param=(tweet_id,user_name,content,link,tags,created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)
         #将转发的twitter的用户加入用户数据库表
         if retweeted_status_user:
             try:

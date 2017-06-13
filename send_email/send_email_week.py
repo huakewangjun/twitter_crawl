@@ -43,13 +43,12 @@ conn= MySQLdb.connect(
     charset = 'utf8'
     )
 utc_time=datetime.datetime.utcnow()
-utc_time_start=utc_time-datetime.timedelta(days=1)
-utc_time_delete_until=utc_time-datetime.timedelta(days=7)
+utc_time_start=utc_time-datetime.timedelta(days=7)
 utc_time_end=utc_time
-subject="security twitters of "+utc_time.strftime("%Y-%m-%d")+"(use stucco corpus)"
+subject="security twitters from "+utc_time_start.strftime("%Y-%m-%d")+"to "+utc_time_end.strftime("%Y-%m-%d")
 string =subject+"\n\n"
 cur = conn.cursor()
-cur.execute("select tags from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and tags is not null and relevancy>=1000 order by focus desc",(utc_time_start,))
+cur.execute("select tags from twitter_security_daily where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and tags is not null order by focus desc",(utc_time_start,))
 results = cur.fetchall()
 tags_list=[]
 for row in results:
@@ -59,26 +58,15 @@ for row in results:
         item=item.strip()[1:-1]
         tags_list.append(item.lower())
 counter=collections.Counter(tags_list)
-for k in counter:
-    word=k
-    count=counter[k]
-    cur.execute("select * from keywords_vulnerability_test where keyword=%s",(word,))
-    result = cur.fetchone()
-    if result:
-        cur.execute("update keywords_vulnerability_test set count=count+%s where keyword=%s",(count,word))
-    else:
-        cur.execute("insert into keywords_vulnerability_test(keyword,type,count) values(%s,%s,%s)",(word,'twitter_tag',100))
-    conn.commit()
-
 tags_list=[k[0] for k in counter.most_common(10)]
 
-string+="today's top 10 tags:\n"
+string+="top 10 tags of this week :\n"
 for item in tags_list:
     string+=item+","
 string=string[:-1]+"\n\n"
 
 
-cur.execute("select * from twitter_info_new where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and relevancy>=1000 order by focus desc",(utc_time_start,))
+cur.execute("select * from twitter_security_daily where unix_timestamp(time) >=unix_timestamp(%s) and link is not null order by focus desc",(utc_time_start,))
 results = cur.fetchall()
 i=0
 result_list={}
@@ -92,10 +80,7 @@ for row in results:
     retweeted_status_user=row[9]
     retweet_count=row[11]
     favorite_count=row[12]
-    focus=row[15]
-    predict=row[20]
-    if not predict:
-        predict=0
+    focus=row[13]
     hash1 = ssdeep.hash(content.encode("UTF-8",errors='ignore').replace("\n"," "))
     DuplicateContentFlag=False
     for deephashvalue in result_list.values():
@@ -117,12 +102,9 @@ for row in results:
         create_time=row[10]
         href="https://twitter.com/"+retweeted_status_user+"/status/"+str(retweeted_status_id)
         result_list[retweeted_status_id]=hash1
-        s=nickname+"@"+retweeted_status_user+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"
-        if create_time<utc_time_start:
-            s=s+'[old] '
-        s=s+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
+        s=nickname+"@"+retweeted_status_user+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
-        result_info.append(predict)
+        # result_info.append(focus)
         results_info.append(result_info)
     elif id in result_list.keys():
         continue
@@ -137,9 +119,9 @@ for row in results:
         create_time=row[5]
         href="https://twitter.com/"+screen_name+"/status/"+str(id)
         result_list[id]=hash1
-        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
+        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
-        result_info.append(predict)
+        # result_info.append(focus)
         results_info.append(result_info)
 
     if len(result_list)>49:
@@ -155,7 +137,7 @@ mail_host="smtp.qq.com"
 mail_user="wangjun"
 mail_pass="kivvertzhmszdihg"
 sender = '2439456082@qq.com'
-receivers = ['2439456082@qq.com','183403319@qq.com','fengmuyue@iie.ac.cn','wangshiyang@iie.ac.cn','xiaoyang@iie.ac.cn','yuanzimu@iie.ac.cn','huowei@iie.ac.cn','wuwei@iie.ac.cn','wwei@iie.ac.cn','Lijing_Li@bupt.edu.cn','xiangxiaobo@iie.ac.cn']
+receivers = ['2439456082@qq.com']
 message = MIMEText(string, 'plain', 'utf-8')
 message['From'] =mail_user+"<"+sender+">"
 message['To']=";".join(receivers)
