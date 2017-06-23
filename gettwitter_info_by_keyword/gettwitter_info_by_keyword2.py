@@ -144,7 +144,7 @@ def save_tweets(keyword,new_tweets):
         else:
             link=None
         CVEFlag=False
-        if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,5}',content.lower()):
+        if re.findall('cve(?:-?|\s*)\d{4}-?\d{4,}',content.lower()):
            CVEFlag=True
         focus=retweet_count+favorite_count
         param=(tweet_id,user_name,content,link,tags,created_at,in_reply_to_status_id,quoted_status_id,retweeted_status_id,retweeted_status_user,retweeted_status_created_at,retweet_count,favorite_count,focus,keyword)

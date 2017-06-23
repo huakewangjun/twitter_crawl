@@ -125,7 +125,7 @@ def get_relevancy(content):
     for item in wordlist:
         if item.lower()=='cve':
             wordlist.remove(item)
-    if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',text1):
+    if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,}',text1):
         wordlist.append('cve')
     wordlist = list(set(wordlist))
     predict_list=[]
@@ -261,7 +261,7 @@ def save_tweets(user_name,new_tweets,threadnum,total):
             link=None
         relevancy=get_relevancy(content)
         CVEFlag=False
-        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content.lower()):
+        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,}',content.lower()):
            CVEFlag=True
         utc_time=datetime.datetime.utcnow()
         now_time=utc_time+datetime.timedelta(hours=8)

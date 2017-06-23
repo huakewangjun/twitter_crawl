@@ -139,7 +139,7 @@ def save_tweets(keyword,new_tweets):
                     print "error in downloading twitter content from "+href,e
                     time.sleep(10)
         CVEFlag=False
-        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content.lower()):
+        if re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,}',content.lower()):
            CVEFlag=True
 
         focus=retweet_count+favorite_count

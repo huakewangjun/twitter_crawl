@@ -335,7 +335,7 @@ def get_exploitbox_info(response_url_MD5,response_url,html):
 def save_poc_file_info(id,content,link):
     #获取content里的cve编号
     content1=re.subn('https?://\S+',' ',content.lower())[0]
-    cve_list=re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,5}',content1)
+    cve_list=re.findall('cve(?:-?|_?|\s*)\d{4}(?:-?|_?)\d{4,}',content1)
     for i in range(len(cve_list)):
         item=cve_list[i]
         number="".join(re.findall('\d',item))
@@ -405,18 +405,22 @@ def save_poc_file_info(id,content,link):
                 upload_status,poc_file_name,swift_poc_file_name=get_exploitbox_info(response_url_MD5,response_url,html)
             else:
                 soup = BeautifulSoup(html,'lxml')
-                poc_file_name=soup.title.string.strip()
-                poc_file_name=re.subn('\s+',' ',poc_file_name)[0]
-                poc_file_name=re.subn('/|\\\\|:|\*|"|\<|\>|\||\?','-',poc_file_name)[0]+'.html'
+                title=soup.title
+                poc_file_name=None
+                if title:
+                    poc_file_name=soup.title.string.strip()
+                    poc_file_name=re.subn('\s+',' ',poc_file_name)[0]
+                    poc_file_name=re.subn('/|\\\\|:|\*|"|\<|\>|\||\?','-',poc_file_name)[0]+'.html'
                 if not poc_file_name:
                     s=re.split('\#|\?|&',response_url)[0]
                     if s.endswith('/'):
                         s=s[:-1]
                     s=s.split('/')[-1]
-                    if s.endswith('.htm') or s.endswith('.html'):
-                        poc_file_name=s
-                    else:
-                        poc_file_name=s+'.html'
+                    poc_file_name=s
+                    # if s.endswith('.htm') or s.endswith('.html'):
+                    #     poc_file_name=s
+                    # else:
+                    #     poc_file_name=s+'.html'
                 swift_poc_file_name=response_url_MD5+'-'+poc_file_name
                 upload_status=save_poc_file(html,swift_poc_file_name)
         #保存poc_file信息
