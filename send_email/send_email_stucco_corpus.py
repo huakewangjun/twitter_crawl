@@ -59,15 +59,18 @@ for row in results:
         item=item.strip()[1:-1]
         tags_list.append(item.lower())
 counter=collections.Counter(tags_list)
+keep_word_list=['security']
 for k in counter:
     word=k
+    if k in keep_word_list:
+        continue
     count=counter[k]
     cur.execute("select * from keywords_vulnerability_test where keyword=%s",(word,))
     result = cur.fetchone()
     if result:
         cur.execute("update keywords_vulnerability_test set count=count+%s where keyword=%s",(count,word))
     else:
-        cur.execute("insert into keywords_vulnerability_test(keyword,type,count) values(%s,%s,%s)",(word,'twitter_tag',100))
+        cur.execute("insert into keywords_vulnerability_test(keyword,type,count) values(%s,%s,%s)",(word,'twitter_tag',1))
     conn.commit()
 
 tags_list=[k[0] for k in counter.most_common(10)]
@@ -88,6 +91,61 @@ for row in results:
     id=row[0]
     screen_name=row[1]
     content=row[2]
+    content=content.encode("UTF-8",errors='ignore').replace("\n"," ")
+
+    text1=re.subn('https?://\S+',' ',content.lower())[0]
+    text1=re.subn('@\s*[0-9a-zA-Z-_]+',' ',text1)[0]
+    text1=text1.replace('...',' ').strip()
+    text1=re.subn('^retweeted\s*[\s\S]*:',' ',text1)[0].strip()
+    wordlist=[word for word, pos in tag(text1)]
+    twitter_type_list=[]
+    for word in wordlist:
+        cur.execute("select twitter_type from keywords_vulnerability_test where keyword=%s",(word,))
+        result=cur.fetchone()
+        if result:
+            if result[0]!='other':
+                twitter_type_list.append(result[0])
+    twitter_type_list = list(set(twitter_type_list))
+    twitter_tag=''
+    if not twitter_type_list:
+        twitter_tag='[other]'
+    elif len(twitter_type_list)==1:
+        twitter_tag='['+twitter_type_list[0]+']'
+    else:
+        for item in twitter_type_list:
+            if item in ['POC','MalwareAnalysis','DataBreach','Conference']:
+                twitter_tag='['+item+']'
+                break
+        for item in twitter_type_list:
+            if item in ['Android','iOS','Windows','Linux','Unix','macOS','NX-OS','Popular Software','Browser','ThirdParty','Router','Mobile','Firewall','Wireless','Protocol','Website','Mail','Languages','Frame']:
+                twitter_tag='['+item+']'
+                break
+        for item in twitter_type_list:
+           if item in ['Tool']:
+                twitter_tag='['+item+']'
+                break
+        for item in twitter_type_list:
+           if item in ['Technology']:
+                twitter_tag='['+item+']'
+                break
+        for item in twitter_type_list:
+           if item in ['Exploitation']:
+                twitter_tag='['+item+']'
+                break
+        for item in twitter_type_list:
+           if item in ['Attack']:
+                twitter_tag='['+item+']'
+                break
+        twitter_tag='['+item+']'
+
+
+
+
+
+
+
+
+
     retweeted_status_id=row[8]
     retweeted_status_user=row[9]
     retweet_count=row[11]
@@ -96,7 +154,7 @@ for row in results:
     predict=row[20]
     if not predict:
         predict=0
-    hash1 = ssdeep.hash(content.encode("UTF-8",errors='ignore').replace("\n"," "))
+    hash1 = ssdeep.hash(content)
     DuplicateContentFlag=False
     for deephashvalue in result_list.values():
         if ssdeep.compare(hash1, deephashvalue)>=3:
@@ -120,7 +178,8 @@ for row in results:
         s=nickname+"@"+retweeted_status_user+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"
         if create_time<utc_time_start:
             s=s+'[old] '
-        s=s+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
+        s+=twitter_tag+' '
+        s=s+content+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
         result_info.append(predict)
         results_info.append(result_info)
@@ -137,7 +196,7 @@ for row in results:
         create_time=row[5]
         href="https://twitter.com/"+screen_name+"/status/"+str(id)
         result_list[id]=hash1
-        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+content.encode("UTF-8",errors='ignore').replace("\n"," ")+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
+        s=nickname+"@"+screen_name+'    '+str(create_time+datetime.timedelta(hours=8))+'(GMT+8)'+"\n"+twitter_tag+' '+content+"\n"+href+"\n"+'retweet_count:'+str(retweet_count)+'    favorite_count:'+str(favorite_count)+'    relevancy:'+str(predict)+'    focus:'+str(focus)+'\n'
         result_info.append(s)
         result_info.append(predict)
         results_info.append(result_info)

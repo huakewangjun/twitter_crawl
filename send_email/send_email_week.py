@@ -45,7 +45,7 @@ conn= MySQLdb.connect(
 utc_time=datetime.datetime.utcnow()
 utc_time_start=utc_time-datetime.timedelta(days=7)
 utc_time_end=utc_time
-subject="security twitters from "+utc_time_start.strftime("%Y-%m-%d")+"to "+utc_time_end.strftime("%Y-%m-%d")
+subject="security twitters from "+utc_time_start.strftime("%Y-%m-%d")+" to "+utc_time_end.strftime("%Y-%m-%d")
 string =subject+"\n\n"
 cur = conn.cursor()
 cur.execute("select tags from twitter_security_daily where unix_timestamp(time) >=unix_timestamp(%s) and link is not null and tags is not null order by focus desc",(utc_time_start,))
@@ -124,7 +124,7 @@ for row in results:
         # result_info.append(focus)
         results_info.append(result_info)
 
-    if len(result_list)>49:
+    if len(result_list)>99:
         break
 #results_info=mergesort(mergesort(results_info))
 #results_info.reverse()
@@ -137,7 +137,7 @@ mail_host="smtp.qq.com"
 mail_user="wangjun"
 mail_pass="kivvertzhmszdihg"
 sender = '2439456082@qq.com'
-receivers = ['2439456082@qq.com']
+receivers = ['2439456082@qq.com','183403319@qq.com','fengmuyue@iie.ac.cn','wangshiyang@iie.ac.cn','xiaoyang@iie.ac.cn','yuanzimu@iie.ac.cn','huowei@iie.ac.cn','wuwei@iie.ac.cn','wwei@iie.ac.cn','Lijing_Li@bupt.edu.cn','xiangxiaobo@iie.ac.cn']
 message = MIMEText(string, 'plain', 'utf-8')
 message['From'] =mail_user+"<"+sender+">"
 message['To']=";".join(receivers)
